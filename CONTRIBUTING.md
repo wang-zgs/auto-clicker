@@ -1,5 +1,7 @@
 # 贡献指南
 
+[🇨🇳 中文版](CONTRIBUTING.md) | [🇺🇸 English](CONTRIBUTING_EN.md)
+
 感谢您对连点器项目的关注！我们欢迎各种形式的贡献。
 
 ## 如何贡献
