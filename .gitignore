@@ -1,0 +1,47 @@
+# 编译输出
+*.exe
+*.o
+*.obj
+*.res
+*.dll
+*.lib
+*.a
+
+# 临时文件
+*.tmp
+*.temp
+*~
+
+# 备份文件
+*_backup.*
+*_v*.exe
+*_test.exe
+*_enhanced.exe
+*_fixed.exe
+
+# Visual Studio
+.vs/
+*.vcxproj.user
+*.sln
+*.vcxproj
+Debug/
+Release/
+x64/
+
+# 测试文件
+test_*.bat
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
