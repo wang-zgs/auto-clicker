@@ -37,6 +37,7 @@ int clickCount = 0;
 HANDLE clickThread = NULL;
 HANDLE delayThread = NULL;
 HHOOK mouseHook = NULL;
+HHOOK globalMouseHook = NULL;
 int isSettingPosition = 0;
 int isCountingDown = 0;
 
@@ -45,6 +46,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
 
 // 鼠标钩子过程函数声明
 LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK GlobalMouseHookProc(int nCode, WPARAM wParam, LPARAM lParam);
 
 // 其他函数声明
 void startClicking();
@@ -87,6 +89,23 @@ LRESULT CALLBACK MouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
     return CallNextHookEx(mouseHook, nCode, wParam, lParam);
 }
 
+// 全局鼠标钩子回调函数（用于检测停止连点的按键）
+LRESULT CALLBACK GlobalMouseHookProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode >= 0 && isClicking && !isCountingDown) {
+        // 如果当前在连点过程中
+        if ((isLeftClick && wParam == WM_RBUTTONDOWN) || // 左键连点时检测右键
+            (!isLeftClick && wParam == WM_LBUTTONDOWN)) { // 右键连点时检测左键
+            
+            // 停止连点
+            stopClicking();
+            
+            // 阻止这次点击传递给其他窗口
+            return 1;
+        }
+    }
+    return CallNextHookEx(globalMouseHook, nCode, wParam, lParam);
+}
+
 // 点击模拟函数
 void simulateClick() {
     INPUT input = {0};
@@ -120,8 +139,29 @@ void simulateClick() {
 DWORD WINAPI ClickThreadProc(LPVOID lpParam) {
     while(isClicking) {
         simulateClick();
+        
+        // 检查是否按下了停止按键
+        if(isLeftClick) {
+            // 左键连点时检查右键是否按下
+            if(GetAsyncKeyState(VK_RBUTTON) & 0x8000) {
+                break; // 退出循环，停止连点
+            }
+        } else {
+            // 右键连点时检查左键是否按下
+            if(GetAsyncKeyState(VK_LBUTTON) & 0x8000) {
+                break; // 退出循环，停止连点
+            }
+        }
+        
         Sleep(clickInterval);
     }
+    
+    // 如果是通过按键停止的，需要调用停止函数更新UI
+    if(isClicking) {
+        isClicking = 0;
+        PostMessage(hMainWindow, WM_USER + 1, 0, 0); // 发送自定义消息更新UI
+    }
+    
     return 0;
 }
 
@@ -143,7 +183,13 @@ DWORD WINAPI DelayStartThreadProc(LPVOID lpParam) {
         isCountingDown = 0;
         
         clickThread = CreateThread(NULL, 0, ClickThreadProc, NULL, 0, NULL);
-        SetWindowTextW(hStatusLabel, L"状态: 连点中...");
+        
+        // 更新状态显示，包含停止提示
+        if(isLeftClick) {
+            SetWindowTextW(hStatusLabel, L"状态: 左键连点中... (按右键停止)");
+        } else {
+            SetWindowTextW(hStatusLabel, L"状态: 右键连点中... (按左键停止)");
+        }
     }
     
     delayThread = NULL;
@@ -184,6 +230,12 @@ void stopClicking() {
     
     // 停止点击
     isClicking = 0;
+    
+    // 移除全局鼠标钩子
+    if(globalMouseHook) {
+        UnhookWindowsHookEx(globalMouseHook);
+        globalMouseHook = NULL;
+    }
     
     // 等待延迟线程结束
     if(delayThread) {
@@ -336,6 +388,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             }
             break;
             
+        case WM_USER + 1: // 自定义消息：鼠标按键停止连点
+            // 更新UI状态
+            EnableWindow(hStartButton, TRUE);
+            EnableWindow(hStopButton, FALSE);
+            SetWindowTextW(hStatusLabel, L"状态: 已通过鼠标按键停止");
+            
+            // 清理线程句柄
+            if(clickThread) {
+                WaitForSingleObject(clickThread, 1000); // 等待最多1秒
+                CloseHandle(clickThread);
+                clickThread = NULL;
+            }
+            
+            // 移除全局鼠标钩子
+            if(globalMouseHook) {
+                UnhookWindowsHookEx(globalMouseHook);
+                globalMouseHook = NULL;
+            }
+            break;
+            
         case WM_HOTKEY:
             if(wParam == 1) { // F6
                 if(!isClicking && !isCountingDown) startClicking();
@@ -349,6 +421,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if(mouseHook) {
                 UnhookWindowsHookEx(mouseHook);
                 mouseHook = NULL;
+            }
+            if(globalMouseHook) {
+                UnhookWindowsHookEx(globalMouseHook);
+                globalMouseHook = NULL;
             }
             UnregisterHotKey(hwnd, 1);
             UnregisterHotKey(hwnd, 2);
@@ -378,7 +454,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     RegisterClassW(&wc);
     
     // 创建窗口
-    hMainWindow = CreateWindowW(L"ClickerApp", L"连点器 v1.2", 
+    hMainWindow = CreateWindowW(L"ClickerApp", L"连点器 v1.3", 
         WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_THICKFRAME,
         CW_USEDEFAULT, CW_USEDEFAULT, 380, 390,
         NULL, NULL, hInstance, NULL);
